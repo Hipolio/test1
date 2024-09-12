@@ -1,2 +1,6 @@
 Flask
 Gunicorn
+pusher
+mysql-connector-python
+pytzFlask
+Gunicorn
