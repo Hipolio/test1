@@ -1,6 +1,7 @@
 Flask
 Gunicorn
+Flask
+Gunicorn
 pusher
 mysql-connector-python
-pytzFlask
-Gunicorn
+pytz
