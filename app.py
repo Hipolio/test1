@@ -21,7 +21,7 @@ def alumnosGuardar():
     nombreapellido = request.form["txtNombreApellidoFA"]
     return f"Matrícula: {matricula} Nombre y Apellido: {nombreapellido}"
 
-@app.route("/evento")
+@app.route("/evento, methods=["GET"]")
 def (evento):
     pusher_client = pusher.Pusher(
     app_id='1864235',
@@ -31,4 +31,4 @@ def (evento):
     ssl=True
 )
 
-pusher_client.trigger('my-channel', 'my-event', {'message': 'hello world'})
+pusher_client.trigger("conexion", "evento", request.arg)
