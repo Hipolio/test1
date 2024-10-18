@@ -1,122 +1,106 @@
-from flask import Flask
-from flask import render_template, request, jsonify, make_response
+from flask import Flask, render_template, request, jsonify
 import mysql.connector
-import datetime
-import pytz
+import pusher
 
+# Configuración de conexión MySQL
 con = mysql.connector.connect(
-    host="185.232.14.52",
-    database="u760464709_tst_sep",
-    user="u760464709_tst_sep_usr",
-    password="dJ0CIAFF="
+  host="185.232.14.52",
+  database="u760464709_tst_sep",
+  user="u760464709_tst_sep_usr",
+  password="dJ0CIAFF="
 )
 
 app = Flask(__name__)
 
+# Configuración de Pusher
+pusher_client = pusher.Pusher(
+  app_id='1767934',
+  key='ffa9ea426828188c22c1',
+  secret='628348e447718a9eec1f',
+  cluster='us2',
+  ssl=True
+)
+
+# Ruta para renderizar la página principal
 @app.route("/")
 def index():
-    con.close()
-    return render_template("app.html")
+    return render_template("usuarios.html")
 
-@app.route("/alumnos")
-def alumnos():
-    con.close()
-    return render_template("alumnos.html")
+# Ruta para renderizar la página de usuarios
+@app.route("/usuarios")
+def usuarios():
+    return render_template("usuarios.html")
 
-@app.route("/alumnos/guardar", methods=["POST"])
-def alumnosGuardar():
-    con.close()
-    matricula = request.form["txtMatriculaFA"]
-    nombreapellido = request.form["txtNombreApellidoFA"]
-    return f"Matrícula {matricula} Nombre y Apellido {nombreapellido}"
+# Crear usuario
+@app.route("/usuarios/guardar", methods=["POST"])
+def usuarios_guardar():
+    usuario = request.form["txtUsuarioFA"]
+    contrasena = request.form["txtContrasenaFA"]
 
-@app.route("/experiencias/guardar", methods=["POST"])
-def experienciasGuardar():
     if not con.is_connected():
         con.reconnect()
-    
-    nombreapellido = request.form["txtNombreApellidoFA"]
-    comentario = request.form["txtComentarioFA"]
-    calificacion = request.form["txtCalificacionFA"]
-
     cursor = con.cursor()
-    sql = """
-        INSERT INTO tst0_experiencias (Nombre_Apellido, Comentario, Calificacion)
-        VALUES (%s, %s, %s)
-    """
-    val = (nombreapellido, comentario, calificacion)
-    
-    cursor.execute(sql, val)
+
+    # Insertar nuevo usuario
+    sql = "INSERT INTO tst0_usuarios (Nombre_Usuario, Contrasena) VALUES (%s, %s)"
+    cursor.execute(sql, (usuario, contrasena))
     con.commit()
-    con.close()
 
-    return f"Nombre y Apellido: {nombreapellido}, Comentario: {comentario}, Calificación: {calificacion}"
+    # Disparar evento Pusher para notificar la inserción
+    pusher_client.trigger("registrosTiempoReal", "registroTiempoReal", {"usuario": usuario})
 
+    return jsonify({"status": "success", "message": "Usuario creado exitosamente"})
+
+# Leer todos los usuarios
 @app.route("/buscar")
 def buscar():
     if not con.is_connected():
         con.reconnect()
-
-    cursor = con.cursor(dictionary=True)
-    cursor.execute("""
-    SELECT Id_Log, Temperatura, Humedad, DATE_FORMAT(Fecha_Hora, '%d/%m/%Y') AS Fecha, DATE_FORMAT(Fecha_Hora, '%H:%i:%s') AS Hora FROM sensor_log
-    ORDER BY Id_Log DESC
-    LIMIT 10 OFFSET 0
-    """)
+    cursor = con.cursor()
+    cursor.execute("SELECT * FROM tst0_usuarios ORDER BY Id_Usuario DESC")
     registros = cursor.fetchall()
 
-    con.close()
-    return make_response(jsonify(registros))
+    return jsonify(registros)
 
-@app.route("/editar", methods=["GET"])
-def editar():
+# Actualizar usuario
+@app.route("/usuarios/actualizar", methods=["POST"])
+def usuarios_actualizar():
+    id_usuario = request.form["id_usuario"]
+    usuario = request.form["txtUsuarioFA"]
+    contrasena = request.form["txtContrasenaFA"]
+
     if not con.is_connected():
         con.reconnect()
-
-    id = request.args["id"]
-
-    cursor = con.cursor(dictionary=True)
-    sql = """
-    SELECT Id_Log, Temperatura, Humedad FROM sensor_log
-    WHERE Id_Log = %s
-    """
-    val = (id,)
-
-    cursor.execute(sql, val)
-    registros = cursor.fetchall()
-    con.close()
-
-    return make_response(jsonify(registros))
-
-@app.route("/guardar", methods=["POST"])
-def guardar():
-    if not con.is_connected():
-        con.reconnect()
-
-    id = request.form["id"]
-    temperatura = request.form["temperatura"]
-    humedad = request.form["humedad"]
-    fechahora = datetime.datetime.now(pytz.timezone("America/Matamoros"))
-    
     cursor = con.cursor()
 
-    if id:
-        sql = """
-        UPDATE sensor_log SET
-        Temperatura = %s,
-        Humedad = %s
-        WHERE Id_Log = %s
-        """
-        val = (temperatura, humedad, id)
-    else:
-        sql = """
-        INSERT INTO sensor_log (Temperatura, Humedad, Fecha_Hora)
-        VALUES (%s, %s, %s)
-        """
-        val = (temperatura, humedad, fechahora)
-    
-    cursor.execute(sql, val)
+    # Actualizar usuario
+    sql = "UPDATE tst0_usuarios SET Nombre_Usuario=%s, Contrasena=%s WHERE Id_Usuario=%s"
+    cursor.execute(sql, (usuario, contrasena, id_usuario))
     con.commit()
-    con.close()
 
-    return jsonify({})
+    # Disparar evento Pusher para notificar la actualización
+    pusher_client.trigger("registrosTiempoReal", "registroTiempoReal", {"usuario": usuario})
+
+    return jsonify({"status": "success", "message": "Usuario actualizado exitosamente"})
+
+# Eliminar usuario
+@app.route("/usuarios/eliminar", methods=["POST"])
+def usuarios_eliminar():
+    id_usuario = request.form["id_usuario"]
+
+    if not con.is_connected():
+        con.reconnect()
+    cursor = con.cursor()
+
+    # Eliminar usuario
+    sql = "DELETE FROM tst0_usuarios WHERE Id_Usuario=%s"
+    cursor.execute(sql, (id_usuario,))
+    con.commit()
+
+    # Disparar evento Pusher para notificar la eliminación
+    pusher_client.trigger("registrosTiempoReal", "registroTiempoReal", {"id_usuario": id_usuario})
+
+    return jsonify({"status": "success", "message": "Usuario eliminado exitosamente"})
+
+if __name__ == "__main__":
+    app.run(debug=True)
